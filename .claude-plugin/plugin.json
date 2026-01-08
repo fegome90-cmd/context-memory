@@ -1,0 +1,10 @@
+{
+  "name": "gh-init-repo",
+  "version": "1.0.0",
+  "description": "Optimized workflow for creating GitHub repositories from local projects. Interactive command that guides through git initialization, GitHub repo creation via CLI, and initial commit with proper .gitignore and README.",
+  "author": {
+    "name": "Felipe Gonzalez"
+  },
+  "license": "MIT",
+  "keywords": ["git", "github", "repository", "workflow", "cli"]
+}
