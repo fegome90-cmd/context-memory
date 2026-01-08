@@ -17,7 +17,7 @@ First, verify that GitHub CLI is authenticated and the current directory is not 
 !gh auth status
 
 # Check if already a Git repository
-!test -d .git && echo "ALREADY_GIT_REPO" || echo "NOT_GIT_REPO"
+test -d .git && GIT_REPO_EXISTS="yes" || GIT_REPO_EXISTS="no"
 ```
 
 If GitHub CLI is not authenticated, instruct the user to run `gh auth login` first.
@@ -26,12 +26,19 @@ If the directory is already a Git repository, ask if they want to:
 1. Continue with this repository (add remote and push)
 2. Stop and run in a different directory
 
+**Workflow State Variables:**
+- `$GIT_REPO_EXISTS` - "yes" if already a git repo, "no" otherwise
+- `$CLAUDE_MD_EXISTS` - "yes" if CLAUDE.md exists, "no" otherwise
+- `$README_EXISTS` - "yes" if README.md exists, "no" otherwise
+
+Use these variables in workflow decisions rather than re-checking.
+
 ## CLAUDE.md Requirement (BLOCKING)
 
 Before proceeding, check if CLAUDE.md exists in the current directory:
 
 ```bash
-!test -f CLAUDE.md && echo "EXISTS" || echo "NOT_EXISTS"
+test -f CLAUDE.md && CLAUDE_MD_EXISTS="yes" || CLAUDE_MD_EXISTS="no"
 ```
 
 **If CLAUDE.md does NOT exist, this is BLOCKING:**
@@ -181,7 +188,7 @@ If they want to review, show the contents and ask to continue.
 Check if README.md exists:
 
 ```bash
-!test -f README.md && echo "EXISTS" || echo "NOT_EXISTS"
+test -f README.md && README_EXISTS="yes" || README_EXISTS="no"
 ```
 
 **If README.md does NOT exist, create a basic one:**
