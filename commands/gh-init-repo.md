@@ -270,14 +270,14 @@ Use GitHub CLI to create the repository:
 # If $ARGUMENTS contains --public, create public
 # If $ARGUMENTS contains --private or neither, create private
 
-gh repo create [repo-name] --[visibility] --source=. --remote=origin --push
+!gh repo create [repo-name] --[visibility] --source=. --remote=origin --push
+!git remote get-url origin >/dev/null || { echo "❌ GitHub repository creation failed - remote 'origin' not found"; return 1; }
+echo "✅ GitHub repository created and pushed"
 ```
 
 The `--source=.` flag adds the current directory as a remote.
 The `--remote=origin` flag names the remote "origin".
 The `--push` flag pushes the current branch immediately.
-
-Confirm: "✅ GitHub repository created and pushed"
 
 ### Step 8: Final Verification
 
