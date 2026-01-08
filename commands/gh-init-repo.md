@@ -234,11 +234,11 @@ Ask: "README.md created. Customize later or edit now? (later/edit)"
 Initialize the repository:
 
 ```bash
-git init
-git branch -M main
+!git init
+!test -d .git || { echo "❌ Git initialization failed - .git directory not created"; return 1; }
+!git branch -M main
+echo "✅ Git repository initialized with 'main' branch"
 ```
-
-Confirm: "✅ Git repository initialized with 'main' branch"
 
 ### Step 6: Stage and Commit
 
@@ -255,11 +255,11 @@ Default commit message: "feat: initial commit"
 Execute:
 
 ```bash
-git add .
-git commit -m "[commit message from user or default]"
+!git add .
+!git commit -m "[commit message from user or default]"
+!git log -1 --oneline || { echo "❌ Commit failed"; return 1; }
+echo "✅ Initial commit created"
 ```
-
-Confirm: "✅ Initial commit created"
 
 ### Step 7: Create GitHub Repository
 
