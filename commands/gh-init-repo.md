@@ -114,7 +114,7 @@ If they want to edit the name, ask for the new name and update the repository na
 Show what will be included in the initial commit:
 
 ```bash
-!git status --short 2>/dev/null || echo "No files yet (new repository)"
+test -d .git && git status --short || echo "Not a git repository yet"
 ```
 
 Explain what will be created:
@@ -177,6 +177,8 @@ coverage/
 tmp/
 *.tmp
 EOF
+!test -f .gitignore || { echo "❌ Failed to create .gitignore"; return 1; }
+echo "✅ .gitignore created"
 ```
 
 Ask: ".gitignore created. Review or proceed? (review/proceed)"
@@ -193,7 +195,8 @@ test -f README.md && README_EXISTS="yes" || README_EXISTS="no"
 
 **If README.md does NOT exist, create a basic one:**
 
-```markdown
+```bash
+cat > README.md << 'EOF'
 # [Repository Name]
 
 > [Brief description of what this project does]
@@ -204,15 +207,15 @@ test -f README.md && README_EXISTS="yes" || README_EXISTS="no"
 
 ## Installation
 
-```bash
+\`\`\`bash
 # Installation instructions
-```
+\`\`\`
 
 ## Usage
 
-```bash
+\`\`\`bash
 # Usage examples
-```
+\`\`\`
 
 ## Development
 
@@ -224,7 +227,10 @@ test -f README.md && README_EXISTS="yes" || README_EXISTS="no"
 
 ---
 
-*Created with `/gh-init-repo`*
+*Created with \`/gh-init-repo\`*
+EOF
+!test -f README.md || { echo "❌ Failed to create README.md"; return 1; }
+echo "✅ README.md created"
 ```
 
 Ask: "README.md created. Customize later or edit now? (later/edit)"
