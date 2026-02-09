@@ -1,0 +1,12 @@
+{
+  "name": "context-memory",
+  "version": "1.0.0",
+  "description": "Context tracking bundle system for Claude Code. Track operations via hooks, prune sessions, rehydrate context across windows. JSONL append-only with hybrid storage (global scripts + local bundles).",
+  "author": {
+    "name": "Felipe Gonzalez"
+  },
+  "hooks": "./hooks/hooks.json",
+  "python": {
+    "version": ">=3.10"
+  }
+}

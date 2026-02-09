@@ -1,0 +1,18 @@
+{
+  "bundles": {
+    "plugin-claude-plugin-root-fixes": {
+      "ts": 1767837388,
+      "ops_count": 8,
+      "bytes_est": 800,
+      "branch": "master",
+      "exists": true
+    },
+    "docs-update-v1.0.2": {
+      "ts": 1770431274,
+      "ops_count": 25,
+      "bytes_est": 15100,
+      "branch": "master",
+      "exists": true
+    }
+  }
+}
