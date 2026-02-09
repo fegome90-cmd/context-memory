@@ -36,9 +36,11 @@ class LoadStep:
         if self.action == PlanAction.READ:
             return f"📖 Read: {self.path} ({self.reason})"
         elif self.action == PlanAction.INJECT:
-            return f"💭 Inject: {self.content[:50]}... ({self.reason})"
+            content = self.content or ""
+            return f"💭 Inject: {content[:50]}... ({self.reason})"
         elif self.action == PlanAction.WARN:
-            return f"⚠️  Warn: {self.content}"
+            content = self.content or ""
+            return f"⚠️  Warn: {content}"
         return f"{self.action.value}: {self.reason}"
 
 
@@ -113,11 +115,13 @@ class LoadPlan:
                 lines.append(f"cat '{step.path}'")
                 lines.append("")
             elif step.action == PlanAction.INJECT:
+                content = step.content or ""
                 lines.append(f"# {step.reason}")
-                lines.append(f"echo '→ Note: {step.content[:80]}'")
+                lines.append(f"echo '→ Note: {content[:80]}'")
                 lines.append("")
             elif step.action == PlanAction.WARN:
-                lines.append(f"echo '⚠️  Warning: {step.content}'")
+                content = step.content or ""
+                lines.append(f"echo '⚠️  Warning: {content}'")
                 lines.append("")
 
         return "\n".join(lines)
