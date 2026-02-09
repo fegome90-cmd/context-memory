@@ -54,7 +54,7 @@ def main():
     pruned_events, report = prune(events, config)
 
     # Print report
-    print(f"Pruned session:")
+    print("Pruned session:")
     print(f"  Events: {report.original_count} → {report.pruned_count}")
     print(f"  Removed: {report.removed_count}")
     print(f"  Reasons: {report.removed_reasons}")
@@ -71,13 +71,13 @@ def main():
 
         # Write pruned
         write_jsonl(current_path, pruned_events)
-        print(f"✓ Pruned current.jsonl in place")
+        print("✓ Pruned current.jsonl in place")
     else:
         # Write to new file
         output_path = current_path.with_suffix(".pruned.jsonl")
         write_jsonl(output_path, pruned_events)
         print(f"\n✓ Pruned session saved to: {output_path.name}")
-        print(f"  To replace current.jsonl:")
+        print("  To replace current.jsonl:")
         print(f"    mv {output_path.name} current.jsonl")
 
 

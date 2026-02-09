@@ -10,7 +10,6 @@ import json
 import os
 import sys
 from pathlib import Path
-from datetime import datetime
 
 # Add src to path
 plugin_dir = Path(__file__).parent.parent

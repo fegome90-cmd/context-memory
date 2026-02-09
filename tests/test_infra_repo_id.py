@@ -1,13 +1,10 @@
 """Tests for repository detection and ID generation."""
 
-import uuid
 
-import pytest
 
 from infrastructure.repo import (
     find_repo_root,
     generate_stable_repo_id,
-    get_git_remote_url,
     RepoInfo,
     detect_repo,
     REPO_ID_FILE,

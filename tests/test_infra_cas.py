@@ -1,7 +1,5 @@
 """Tests for Content-Addressable Storage (CAS)."""
 
-import shutil
-from pathlib import Path
 
 import pytest
 

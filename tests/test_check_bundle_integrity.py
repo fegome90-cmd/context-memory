@@ -1,5 +1,4 @@
 """Tests for check_bundle_integrity.py - Precommit hook for JSONL validation."""
-import json
 import pytest
 import subprocess
 from pathlib import Path
@@ -42,8 +41,8 @@ this is not json
 def test_rejects_secrets(bundle_script, tmp_path):
     """Test that secrets in JSONL are detected."""
     # Create JSONL with AWS API key
-    content = f'''{{"operation": "read", "file": "config.py", "tool_input": "AKIAIOSFODNN7EXAMPLE"}}
-{{"operation": "write", "file": "out.py"}}
+    content = '''{"operation": "read", "file": "config.py", "tool_input": "AKIAIOSFODNN7EXAMPLE"}
+{"operation": "write", "file": "out.py"}
 '''
     jsonl_file = create_test_jsonl(tmp_path, content)
 
@@ -121,9 +120,9 @@ def test_handles_broken_symlink(bundle_script, tmp_path):
 def test_detects_multiple_secret_patterns(bundle_script, tmp_path):
     """Test detection of various secret patterns."""
     # Create JSONL with different secret types
-    content = f'''{{"operation": "read", "tool_input": "sk-proj-abc123def456"}}
-{{"operation": "write", "content": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"}}
-{{"operation": "read", "file": "config.py", "tool_input": "-----BEGIN RSA PRIVATE KEY-----"}}
+    content = '''{"operation": "read", "tool_input": "sk-proj-abc123def456"}
+{"operation": "write", "content": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"}
+{"operation": "read", "file": "config.py", "tool_input": "-----BEGIN RSA PRIVATE KEY-----"}
 '''
     jsonl_file = create_test_jsonl(tmp_path, content)
 

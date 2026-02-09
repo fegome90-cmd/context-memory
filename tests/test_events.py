@@ -1,14 +1,12 @@
 """Tests for ContextEvent dataclass."""
 
 import pytest
-from datetime import datetime
 
 from domain.events import (
     ContextEvent,
     OperationType,
     EventSource,
     create_read_event,
-    create_write_event,
     create_prompt_event,
 )
 

@@ -8,8 +8,7 @@ Implements:
 - Budget enforcement (ops + bytes)
 """
 
-from dataclasses import dataclass, field
-from typing import Literal
+from dataclasses import dataclass
 from collections import defaultdict
 
 from .events import ContextEvent, OperationType

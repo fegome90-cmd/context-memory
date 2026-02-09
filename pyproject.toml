@@ -23,3 +23,9 @@ branch = true
 
 [tool.coverage.report]
 fail_under = 80
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+]

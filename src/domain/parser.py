@@ -12,7 +12,6 @@ Handles:
 """
 
 import json
-from typing import Iterator
 
 from .events import ContextEvent
 

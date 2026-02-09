@@ -10,7 +10,7 @@ log_file = Path("/tmp/cm_hook_execution.log")
 log_file.parent.mkdir(parents=True, exist_ok=True)
 
 with open(log_file, "a") as f:
-    f.write(f"\n=== HOOK CALLED ===\n")
+    f.write("\n=== HOOK CALLED ===\n")
     try:
         # Read stdin
         input_data = json.load(sys.stdin)

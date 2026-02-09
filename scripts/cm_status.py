@@ -52,7 +52,7 @@ def main():
     current_count = current_storage.count()
     current_bytes = current_storage.path.stat().st_size if current_storage.exists() else 0
 
-    print(f"Current Session:")
+    print("Current Session:")
     print(f"  Events: {current_count}")
     print(f"  Size: {current_bytes:,} bytes")
     print()
@@ -73,7 +73,7 @@ def main():
             print(f"    Size: {data['bytes_est']:,} bytes")
             print(f"    Modified: {mtime}")
             if not data.get("exists", True):
-                print(f"    ⚠️  File missing!")
+                print("    ⚠️  File missing!")
     elif bundles_dir.exists():
         bundles = sorted(bundles_dir.glob("*.jsonl"))
         print(f"Bundles ({len(bundles)}):")

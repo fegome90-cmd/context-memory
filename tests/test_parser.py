@@ -1,11 +1,10 @@
 """Tests for JSONL parser."""
 
 import json
-from pathlib import Path
 
 import pytest
 
-from domain.events import ContextEvent, OperationType
+from domain.events import OperationType
 from domain.parser import (
     parse_jsonl_line,
     serialize_event,

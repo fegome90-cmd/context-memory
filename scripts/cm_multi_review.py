@@ -979,14 +979,14 @@ Examples:
             print(f"  Working files: {len(context['working_files'])}")
 
             if context["staged_files"]:
-                print(f"\n  Staged files:")
+                print("\n  Staged files:")
                 for f in context["staged_files"][:10]:
                     print(f"    - {f}")
                 if len(context["staged_files"]) > 10:
                     print(f"    ... and {len(context['staged_files']) - 10} more")
 
             if context["working_files"]:
-                print(f"\n  Working files:")
+                print("\n  Working files:")
                 for f in context["working_files"][:10]:
                     print(f"    - {f}")
                 if len(context["working_files"]) > 10:

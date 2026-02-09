@@ -12,9 +12,8 @@ Covers all gaps identified in coverage analysis:
 
 import json
 import subprocess
-from io import StringIO
 from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 import pytest
 
 from scripts.cm_multi_review import (
@@ -26,14 +25,12 @@ from scripts.cm_multi_review import (
     SPECIALIZED_AGENTS,
     Agent,
     _find_agent,
-    _get_preset_reason,
     _validate_agent_data_consistency,
     _validate_agent_name,
     detect_context,
     format_agent_list,
     format_output,
     suggest_agents,
-    validate_environment,
     main,
 )
 

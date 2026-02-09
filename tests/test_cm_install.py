@@ -4,8 +4,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch
-import pytest
 
 # Add scripts directory to path for imports
 plugin_dir = Path(__file__).parent.parent

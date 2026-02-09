@@ -7,7 +7,7 @@ No filesystem logic, just data.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal, Optional, Mapping, Any
+from typing import Optional, Mapping, Any
 from datetime import datetime
 
 

@@ -84,7 +84,7 @@ def list_bundles(repo_id_filter: str = None) -> int:
 
     # Print summary
     print(f"\n{'='*70}")
-    print(f"Context Memory Bundles")
+    print("Context Memory Bundles")
     print(f"{'='*70}")
     print(f"Total: {len(bundles)} bundle(s) across {len(by_repo)} repo(s)\n")
 

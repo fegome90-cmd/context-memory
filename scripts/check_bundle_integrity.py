@@ -115,7 +115,7 @@ def main():
             all_errors.extend(errors)
 
     if exit_code != 0:
-        print(f"\n❌ Bundle integrity check failed", file=sys.stderr)
+        print("\n❌ Bundle integrity check failed", file=sys.stderr)
         print(f"   Found {len(all_errors)} error(s)", file=sys.stderr)
         sys.exit(exit_code)
 

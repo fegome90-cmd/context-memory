@@ -1,6 +1,5 @@
 """Tests for LoadPlan build_load_plan() and detect_drift()."""
 
-import pytest
 
 from domain.events import ContextEvent, OperationType
 from domain.plan import (

@@ -7,7 +7,6 @@ Handles:
 - Reading/writing .claude/context-memory-id
 """
 
-import os
 import hashlib
 import sys
 from pathlib import Path

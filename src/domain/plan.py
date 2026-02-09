@@ -7,7 +7,6 @@ A load plan is a sequence of actions to restore context:
 """
 
 from dataclasses import dataclass, field
-from typing import Literal
 from enum import Enum
 
 from .events import ContextEvent

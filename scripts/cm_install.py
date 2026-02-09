@@ -97,14 +97,14 @@ def install_hooks(repo_root: Path, merge: bool = True) -> None:
         with open(settings_path, "w") as f:
             json.dump(existing_settings, f, indent=2)
 
-        print(f"  ✓ Merged hooks into settings.local.json")
+        print("  ✓ Merged hooks into settings.local.json")
     else:
         # Create new settings.local.json
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         with open(settings_path, "w") as f:
             json.dump(new_hooks, f, indent=2)
 
-        print(f"  ✓ Created settings.local.json with hooks")
+        print("  ✓ Created settings.local.json with hooks")
 
 
 def init_storage(repo_root: Path) -> None:
@@ -117,7 +117,7 @@ def init_storage(repo_root: Path) -> None:
     bundles_dir.mkdir(parents=True, exist_ok=True)
     cas_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"  ✓ Initialized storage")
+    print("  ✓ Initialized storage")
 
 
 def main():

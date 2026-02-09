@@ -1,10 +1,8 @@
 """Tests for pruning strategies."""
 
-from datetime import datetime
 
-import pytest
 
-from domain.events import ContextEvent, OperationType, EventSource
+from domain.events import OperationType
 from domain.pruning import (
     PruningConfig,
     prune,

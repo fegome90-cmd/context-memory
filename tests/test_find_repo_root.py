@@ -1,6 +1,4 @@
 """Tests for find_repo_root_from_path() and detect_repo_from_file_path()."""
-import os
-import pytest
 from pathlib import Path
 
 from infrastructure.repo import (

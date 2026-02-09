@@ -1,6 +1,5 @@
 """Tests for JSONL storage."""
 
-import pytest
 
 from domain.events import create_read_event, create_prompt_event
 from infrastructure.storage_jsonl import JSONLStorage
