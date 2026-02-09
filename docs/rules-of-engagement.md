@@ -247,8 +247,10 @@ python3 ~/.claude/plugins/context-memory/scripts/cm_install.py
 **What it does**:
 1. Creates `.claude/commands/`
 2. Copies command templates
-3. Creates/merges `.claude/hooks.json`
+3. Creates/merges `.claude/settings.local.json` (with PostToolUse hook)
 4. Initializes storage directories
+
+**Note**: Claude Code reads hooks from `settings.json` files, NOT from standalone `hooks.json`. The install script creates `.claude/settings.local.json` for project-level hook configuration.
 
 ### Updates
 
@@ -286,7 +288,7 @@ python3 ~/.claude/plugins/context-memory/scripts/cm_install.py
 ### Troubleshooting
 
 **Common issues**:
-1. Hook not tracking → Check `.claude/hooks.json`
+1. Hook not tracking → Check `.claude/settings.local.json` (NOT `.claude/hooks.json`)
 2. Commands not found → Re-run `cm_install.py`
 3. Bundles too large → Adjust `--max-ops`, check ignore patterns
 

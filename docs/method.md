@@ -391,10 +391,16 @@ Action:
 Symptom: `current.jsonl` not growing
 
 Checks:
-1. `.claude/hooks.json` exists?
+1. `.claude/settings.local.json` exists? (NOT `.claude/hooks.json` - Claude Code reads hooks from `settings.json`)
 2. `cm_track_operation.py` executable?
 3. Claude Code has permissions?
 4. Check logs: `export CM_DEBUG=1`
+
+**Verification**:
+```bash
+# Check for correct file (settings.local.json)
+cat .claude/settings.local.json | grep -A5 "PostToolUse"
+```
 
 ### Bundle Too Large
 
