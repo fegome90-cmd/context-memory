@@ -206,7 +206,7 @@ def sort_by_priority(events: list[ContextEvent], config: PruningConfig) -> list[
     # Convert tag_priority tuple to dict for efficient lookup
     tag_priority_dict = dict(config.tag_priority)
 
-    def get_priority(event: ContextEvent) -> int:
+    def get_priority(event: ContextEvent) -> float:
         tags = event.meta.get("tags", [])
         # Max priority from any tag
         tag_prios = [tag_priority_dict.get(t, 0) for t in tags]

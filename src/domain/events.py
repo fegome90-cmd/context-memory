@@ -83,7 +83,7 @@ class ContextEvent:
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        d = {
+        d: dict[str, object] = {
             "operation": self.operation.value,
             "ts": self.ts,
             "source": self.source.value,

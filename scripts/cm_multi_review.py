@@ -37,7 +37,7 @@ from typing import Any, Dict, List, Tuple
 plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
-from infrastructure.logging import get_logger
+from infrastructure.logging import get_logger  # type: ignore[import-not-found]
 
 logger = get_logger(__name__)
 
@@ -342,15 +342,16 @@ def _validate_agent_data_consistency() -> None:
     # Check 3: No duplicate agent names in AGENT_MAP
     agent_names = list(AGENT_MAP.keys())
     if len(agent_names) != len(set(agent_names)):
-        seen = {}
-        duplicates = []
+        seen_counts: dict[str, int] = {}
+        dup_list: list[str] = []
         for name in agent_names:
-            if name in seen:
-                duplicates.append(f"'{name}' appears {seen[name] + 1} times")
-            seen[name] = seen.get(name, 0) + 1
+            count = seen_counts.get(name, 0)
+            if count > 0:
+                dup_list.append(f"'{name}' appears {count + 1} times")
+            seen_counts[name] = count + 1
 
-        if duplicates:
-            errors.append(f"Duplicate agent names in AGENT_MAP: {duplicates}")
+        if dup_list:
+            errors.append(f"Duplicate agent names in AGENT_MAP: {dup_list}")
 
     # Check 4: Validate all agent name formats
     for agent_name in AGENT_MAP.keys():
@@ -611,6 +612,7 @@ def validate_environment(raise_on_error: bool = False) -> Tuple[bool, List[str]]
         result = subprocess.run(
             ["git", "--version"],
             capture_output=True,
+            text=True,
             timeout=VALIDATION_TIMEOUT,
         )
         if result.returncode != 0:
@@ -649,6 +651,7 @@ def validate_environment(raise_on_error: bool = False) -> Tuple[bool, List[str]]
         result = subprocess.run(
             ["gh", "--version"],
             capture_output=True,
+            text=True,
             timeout=VALIDATION_TIMEOUT,
         )
         if result.returncode == 0:
