@@ -1,0 +1,42 @@
+{
+  "name": "context-memory",
+  "version": "1.0.0",
+  "description": "Context tracking bundle system for Claude Code. Track operations via hooks, prune sessions, rehydrate context across windows. JSONL append-only with hybrid storage (global scripts + local bundles).",
+  "author": {
+    "name": "Felipe Gonzalez"
+  },
+  "commands": [
+    {
+      "name": "cm-list",
+      "description": "List available context bundles"
+    },
+    {
+      "name": "cm-save",
+      "description": "Save current context as a bundle"
+    },
+    {
+      "name": "cm-load",
+      "description": "Load and rehydrate a context bundle"
+    },
+    {
+      "name": "cm-status",
+      "description": "Show context memory status"
+    },
+    {
+      "name": "cm-prune",
+      "description": "Prune current session"
+    },
+    {
+      "name": "cm-context",
+      "description": "Show current context summary"
+    },
+    {
+      "name": "cm-track",
+      "description": "Track specific files in session"
+    },
+    {
+      "name": "cm-multi-review",
+      "description": "Multi-agent code review wizard"
+    }
+  ]
+}

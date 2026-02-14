@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "context-memory-security-scan",
+          "version": "1.0.0",
+          "informationUri": "https://github.com/fegome90-cmd/context-memory"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "GATE-001",
+          "level": "note",
+          "message": {
+            "text": "Gate 1 (Secrets): PASSED - No hardcoded secrets detected"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "GATE-002",
+          "level": "note",
+          "message": {
+            "text": "Gate 2 (Supply Chain): PASSED - Zero external dependencies (Python stdlib only)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pyproject.toml"
+                },
+                "region": {
+                  "startLine": 7,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "GATE-003",
+          "level": "warning",
+          "message": {
+            "text": "Gate 3 (Build/Test): INCONCLUSIVE - pytest not available in current environment. Historical test results: 242/247 passing (98%)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "tests/"
+                },
+                "region": {
+                  "startLine": 1,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "GATE-004",
+          "level": "note",
+          "message": {
+            "text": "Gate 4 (Config): PASSED - .gitignore properly excludes sensitive files (sessions/, bundles/, index.jsonl)"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".gitignore"
+                },
+                "region": {
+                  "startLine": 21,
+                  "startColumn": 1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

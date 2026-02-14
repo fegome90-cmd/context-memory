@@ -1,0 +1,52 @@
+# Precommit hooks for context-memory plugin
+#
+# Install:
+#   pip install pre-commit
+#   pre-commit install
+#
+# Run on all files:
+#   pre-commit run --all-files
+#
+# Update hooks:
+#   pre-commit autoupdate
+
+# Exclude session logs, bundles, external directories, and test files with fake secrets
+exclude: '^(\.claude/context_memory/(sessions|bundles)/|Developer/|\.git/|node_modules/|tests/test_check_bundle_integrity\.py)'
+
+repos:
+  # Built-in hooks from pre-commit-hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+        name: Detect private keys
+        description: Detects private keys (RSA, EC, DSA)
+
+      - id: check-added-large-files
+        name: Prevent large JSONL commits
+        description: Prevents committing large files (>100KB)
+        args: ['--maxkb=100']
+
+      - id: check-yaml
+        name: Validate YAML syntax
+
+      - id: check-json
+        name: Validate JSON syntax
+
+      - id: trailing-whitespace
+        name: Remove trailing whitespace
+        args: ['--markdown-linebreak-ext=md']
+
+      - id: end-of-file-fixer
+        name: Ensure files end with newline
+
+  # Local hooks for project-specific validation
+  - repo: local
+    hooks:
+      - id: bundle-integrity
+        name: Context Memory Bundle Integrity
+        description: Validates JSONL files and checks for secrets
+        entry: scripts/check_bundle_integrity.py
+        language: system
+        pass_filenames: true
+        files: '\.jsonl$'
