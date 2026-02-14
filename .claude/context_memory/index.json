@@ -13,6 +13,33 @@
       "bytes_est": 15100,
       "branch": "master",
       "exists": true
+    },
+    "test-bundle": {
+      "ts": 1771086085,
+      "ops_count": 5,
+      "bytes_est": 4100,
+      "branch": "main",
+      "repo_rev": "fb76583",
+      "focus_hash": "bc1a2936",
+      "exists": true
+    },
+    "test-bundle-2": {
+      "ts": 1771086098,
+      "ops_count": 5,
+      "bytes_est": 4100,
+      "branch": "unknown",
+      "repo_rev": "fb76583",
+      "focus_hash": "bc1a2936",
+      "exists": true
+    },
+    "multi-review-measurable": {
+      "ts": 1771100425,
+      "ops_count": 20,
+      "bytes_est": 8300,
+      "branch": "main",
+      "repo_rev": "e549017",
+      "focus_hash": "869e752f",
+      "exists": true
     }
   }
 }
