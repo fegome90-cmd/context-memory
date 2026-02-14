@@ -15,7 +15,7 @@ plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
 from domain.plan import build_load_plan, detect_drift
-from infrastructure.repo import detect_repo
+from infrastructure.repo import detect_repo, find_repo_root_from_path
 from infrastructure.storage_jsonl import JSONLStorage
 from infrastructure.cas import compute_sha256
 from infrastructure.staleness import assess_staleness
@@ -30,6 +30,9 @@ def load_checkpoint(bundle_dir: Path, bundle_name: str) -> str | None:
 
 
 def main():
+    # Get plugin_dir inside function to avoid scoping issues
+    plugin_dir = Path(__file__).parent.parent
+
     parser = argparse.ArgumentParser(description="Load a context bundle")
     parser.add_argument("name", help="Bundle name")
     parser.add_argument(
@@ -46,11 +49,28 @@ def main():
     )
     args = parser.parse_args()
 
-    # Detect repo
-    repo_info = detect_repo()
-    if not repo_info:
-        print("Error: Not in a git repository", file=sys.stderr)
-        sys.exit(1)
+    # Detect repo (with fallback to find from plugin_dir)
+    repo_info = None
+    repo_root = find_repo_root_from_path(plugin_dir)
+    if not repo_root:
+        repo_info = detect_repo()
+        if not repo_info:
+            print("Error: Not in a git repository", file=sys.stderr)
+            sys.exit(1)
+        repo_root = repo_info.root
+    else:
+        # Ensure we have repo_info for index reads
+        repo_info = detect_repo()
+        if not repo_info:
+            # Create minimal repo_info-like object
+            class MinimalRepoInfo:
+                def __init__(self, root):
+                    self.root = root
+                    self.branch = None
+                    self.repo_id = None
+                    self.remote_url = None
+
+            repo_info = MinimalRepoInfo(repo_root)
 
     # Load bundle
     bundle_dir = repo_info.root / ".claude" / "context_memory" / "bundles"
@@ -78,12 +98,27 @@ def main():
         print("FOCUS: n/a | EVID: n-a\n")
         focus_dirs = []
 
+    # Load saved staleness metadata from index
+    saved_rev = None
+    saved_focus_hash = None
+    local_index_path = repo_info.root / ".claude" / "context_memory" / "index.json"
+    if local_index_path.exists():
+        import json
+
+        with open(local_index_path) as f:
+            local_index = json.load(f)
+        bundle_meta = local_index.get("bundles", {}).get(args.name, {})
+        saved_rev = bundle_meta.get("repo_rev")
+        saved_focus_hash = bundle_meta.get("focus_hash")
+
     # Check staleness
     if focus_dirs:
         staleness = assess_staleness(
             repo_root=repo_info.root,
             bundle_ts=bundle_path.stat().st_mtime,
             focus_dirs=focus_dirs,
+            saved_rev=saved_rev,
+            saved_focus_hash=saved_focus_hash,
         )
         print(f"STALE_RISK: {staleness.risk.upper()} ({staleness.reason})\n")
 

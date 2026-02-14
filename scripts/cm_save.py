@@ -160,8 +160,10 @@ def main():
             repo_info = MinimalRepoInfo(repo_root)
 
     # Setup paths
-    sessions_dir = repo_root / ".claude" / "context_memory" / "sessions"
-    bundles_dir = repo_root / ".claude" / "context_memory" / "bundles"
+    context_memory_dir = repo_root / ".claude" / "context_memory"
+    sessions_dir = context_memory_dir / "sessions"
+    bundles_dir = context_memory_dir / "bundles"
+    context_memory_dir.mkdir(parents=True, exist_ok=True)
     bundles_dir.mkdir(parents=True, exist_ok=True)
 
     # Read current session
@@ -185,6 +187,18 @@ def main():
     checkpoint_path = write_checkpoint_atomic(bundles_dir, args.name, checkpoint)
     print(f"  Checkpoint: {checkpoint_path.name}")
 
+    # Get repo state for staleness tracking
+    from infrastructure.staleness import get_repo_rev, get_focus_dirs_hash
+
+    focus_dirs = (
+        checkpoint.split("FOCUS:")[1].split("|")[0].strip().split(",")
+        if "FOCUS:" in checkpoint
+        else []
+    )
+    focus_dirs = [d for d in focus_dirs if d and d != "n/a"]
+    repo_rev = get_repo_rev(repo_root)
+    focus_hash = get_focus_dirs_hash(repo_root, focus_dirs) if focus_dirs else None
+
     # Update indexes (both local and global)
     update_indexes(
         repo_info=repo_info,
@@ -192,6 +206,8 @@ def main():
         ops_count=report.pruned_count,
         bytes_est=report.total_bytes_est,
         bundles_dir=bundles_dir,
+        repo_rev=repo_rev,
+        focus_hash=focus_hash,
     )
 
     # Print summary
@@ -202,13 +218,19 @@ def main():
 
 
 def update_indexes(
-    repo_info, bundle_name: str, ops_count: int, bytes_est: int, bundles_dir: Path
+    repo_info,
+    bundle_name: str,
+    ops_count: int,
+    bytes_est: int,
+    bundles_dir: Path,
+    repo_rev: str | None = None,
+    focus_hash: str | None = None,
 ) -> None:
     """Update both local and global indexes."""
     branch = repo_info.branch or "unknown"
     timestamp = int(datetime.now().timestamp())
 
-    # Metadata for both indexes
+    # Metadata for both indexes (includes staleness tracking)
     metadata = {
         "ts": timestamp,
         "repo_id": repo_info.repo_id,
@@ -218,6 +240,8 @@ def update_indexes(
         "bundle_name": bundle_name,
         "ops_count": ops_count,
         "bytes_est": bytes_est,
+        "repo_rev": repo_rev,
+        "focus_hash": focus_hash,
     }
 
     # 1. Update local index (in repo)
@@ -240,13 +264,15 @@ def update_local_index(index_path: Path, metadata: dict, bundles_dir: Path) -> N
     else:
         index = {"bundles": {}}
 
-    # Add/update bundle entry
+    # Add/update bundle entry (with staleness tracking)
     bundle_name = metadata["bundle_name"]
     index["bundles"][bundle_name] = {
         "ts": metadata["ts"],
         "ops_count": metadata["ops_count"],
         "bytes_est": metadata["bytes_est"],
         "branch": metadata["branch"],
+        "repo_rev": metadata.get("repo_rev"),
+        "focus_hash": metadata.get("focus_hash"),
     }
 
     # Verify bundle file exists

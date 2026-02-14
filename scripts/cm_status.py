@@ -16,29 +16,49 @@ from pathlib import Path
 plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
-from infrastructure.repo import detect_repo
+from infrastructure.repo import detect_repo, find_repo_root_from_path
 from infrastructure.storage_jsonl import JSONLStorage
 
 
 def main():
+    # Get plugin_dir inside function to avoid scoping issues
+    plugin_dir = Path(__file__).parent.parent
+
     parser = argparse.ArgumentParser(description="Show context memory status")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 
-    # Detect repo
-    repo_info = detect_repo()
-    if not repo_info:
-        print("Error: Not in a git repository", file=sys.stderr)
-        sys.exit(1)
+    # Detect repo (with fallback to find from plugin_dir)
+    repo_info = None
+    repo_root = find_repo_root_from_path(plugin_dir)
+    if not repo_root:
+        repo_info = detect_repo()
+        if not repo_info:
+            print("Error: Not in a git repository", file=sys.stderr)
+            sys.exit(1)
+        repo_root = repo_info.root
+    else:
+        # Ensure we have repo_info for status display
+        repo_info = detect_repo()
+        if not repo_info:
+            # Create minimal repo_info-like object
+            class MinimalRepoInfo:
+                def __init__(self, root):
+                    self.root = root
+                    self.branch = None
+                    self.repo_id = None
+                    self.remote_url = None
+
+            repo_info = MinimalRepoInfo(repo_root)
 
     # Setup paths
     sessions_dir = repo_info.root / ".claude" / "context_memory" / "sessions"
     bundles_dir = repo_info.root / ".claude" / "context_memory" / "bundles"
 
     # Header
-    print("="*60)
+    print("=" * 60)
     print("Context Memory Status")
-    print("="*60)
+    print("=" * 60)
     print(f"Repo: {repo_info.root.name}")
     print(f"ID: {repo_info.repo_id}")
     if repo_info.branch:
@@ -50,7 +70,9 @@ def main():
     # Current session
     current_storage = JSONLStorage(sessions_dir / "current.jsonl")
     current_count = current_storage.count()
-    current_bytes = current_storage.path.stat().st_size if current_storage.exists() else 0
+    current_bytes = (
+        current_storage.path.stat().st_size if current_storage.exists() else 0
+    )
 
     print("Current Session:")
     print(f"  Events: {current_count}")
@@ -67,7 +89,7 @@ def main():
         bundles_data = local_index.get("bundles", {})
         print(f"Bundles ({len(bundles_data)}):")
         for name, data in bundles_data.items():
-            mtime = datetime.fromtimestamp(data["ts"]).strftime('%Y-%m-%d %H:%M')
+            mtime = datetime.fromtimestamp(data["ts"]).strftime("%Y-%m-%d %H:%M")
             print(f"  {name}:")
             print(f"    Events: {data['ops_count']}")
             print(f"    Size: {data['bytes_est']:,} bytes")
@@ -107,7 +129,9 @@ def main():
             try:
                 entry = json.loads(line)
                 ts = datetime.fromtimestamp(entry["ts"]).strftime("%Y-%m-%d %H:%M")
-                print(f"  [{ts}] {entry['bundle_name']} ({entry['repo_id']}) - {entry['ops_count']} ops")
+                print(
+                    f"  [{ts}] {entry['bundle_name']} ({entry['repo_id']}) - {entry['ops_count']} ops"
+                )
             except (json.JSONDecodeError, KeyError):
                 continue
 

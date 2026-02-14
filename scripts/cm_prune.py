@@ -16,22 +16,46 @@ sys.path.insert(0, str(plugin_dir / "src"))
 
 from domain.pruning import PruningConfig, prune
 from infrastructure.jsonl_io import write_jsonl
-from infrastructure.repo import detect_repo
+from infrastructure.repo import detect_repo, find_repo_root_from_path
 from infrastructure.storage_jsonl import JSONLStorage
 
 
 def main():
+    # Get plugin_dir inside function to avoid scoping issues
+    plugin_dir = Path(__file__).parent.parent
+
     parser = argparse.ArgumentParser(description="Prune current session")
     parser.add_argument("--max-ops", type=int, default=20, help="Max operations")
-    parser.add_argument("--max-bytes", type=int, default=120_000, help="Max estimated bytes")
-    parser.add_argument("--in-place", action="store_true", help="Modify current.jsonl in place")
+    parser.add_argument(
+        "--max-bytes", type=int, default=120_000, help="Max estimated bytes"
+    )
+    parser.add_argument(
+        "--in-place", action="store_true", help="Modify current.jsonl in place"
+    )
     args = parser.parse_args()
 
-    # Detect repo
-    repo_info = detect_repo()
-    if not repo_info:
-        print("Error: Not in a git repository", file=sys.stderr)
-        sys.exit(1)
+    # Detect repo (with fallback to find from plugin_dir)
+    repo_info = None
+    repo_root = find_repo_root_from_path(plugin_dir)
+    if not repo_root:
+        repo_info = detect_repo()
+        if not repo_info:
+            print("Error: Not in a git repository", file=sys.stderr)
+            sys.exit(1)
+        repo_root = repo_info.root
+    else:
+        # Ensure we have repo_info for operations
+        repo_info = detect_repo()
+        if not repo_info:
+            # Create minimal repo_info-like object
+            class MinimalRepoInfo:
+                def __init__(self, root):
+                    self.root = root
+                    self.branch = None
+                    self.repo_id = None
+                    self.remote_url = None
+
+            repo_info = MinimalRepoInfo(repo_root)
 
     # Setup paths
     sessions_dir = repo_info.root / ".claude" / "context_memory" / "sessions"
@@ -66,6 +90,7 @@ def main():
         # Backup original
         backup_path = current_path.with_suffix(".jsonl.bak")
         import shutil
+
         shutil.copy2(current_path, backup_path)
         print(f"\n✓ Backup saved to: {backup_path.name}")
 
