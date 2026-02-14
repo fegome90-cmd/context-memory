@@ -16,7 +16,7 @@ plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
 from domain.events import ContextEvent, OperationType, EventSource
-from infrastructure.repo import detect_repo
+from infrastructure.repo import detect_repo_from_file_path
 from infrastructure.storage_jsonl import JSONLStorage
 
 
@@ -43,8 +43,8 @@ def main():
     except (json.JSONDecodeError, IOError):
         return
 
-    # Detect repo
-    repo_info = detect_repo()
+    # Detect repo from transcript path (hooks run with wrong cwd)
+    repo_info = detect_repo_from_file_path(transcript_file)
     if not repo_info:
         return
 
@@ -103,6 +103,7 @@ def main():
 
             # Normalize to relative path
             from infrastructure.paths import get_relative_path
+
             try:
                 rel_path = get_relative_path(file_path, repo_info.root)
             except (ValueError, TypeError):

@@ -23,13 +23,8 @@ Display context memory status including:
 ## Workflow
 
 ```bash
-# Validate environment
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-    echo "Error: CLAUDE_PLUGIN_ROOT environment variable is not set."
-    echo "This command requires Claude Code's plugin environment."
-    echo "Please run this command from within Claude Code."
-    exit 1
-fi
+# Set default plugin root if not already set
+CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/context-memory}"
 
 # Show status
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_status.py"

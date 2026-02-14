@@ -26,13 +26,8 @@ Apply pruning strategy to current.jsonl:
 ## Workflow
 
 ```bash
-# Validate environment
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-    echo "Error: CLAUDE_PLUGIN_ROOT environment variable is not set."
-    echo "This command requires Claude Code's plugin environment."
-    echo "Please run this command from within Claude Code."
-    exit 1
-fi
+# Set default plugin root if not already set
+CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$HOME/.claude/plugins/context-memory}"
 
 # Prune to separate file (preview)
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_prune.py"

@@ -3,9 +3,10 @@
 Regenerate local index from existing bundles.
 
 Usage:
-    python3 cm_reindex.py
+    python3 cm_reindex.py [--repo PATH]
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -14,20 +15,42 @@ from pathlib import Path
 plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
-from infrastructure.repo import detect_repo
+from infrastructure.repo import (
+    detect_repo,
+    find_repo_root_from_path,
+    get_current_branch,
+)
 from infrastructure.storage_jsonl import JSONLStorage
 
 
 def main():
-    # Detect repo
-    repo_info = detect_repo()
-    if not repo_info:
-        print("Error: Not in a git repository", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Regenerate local index from bundles")
+    parser.add_argument(
+        "--repo", type=Path, help="Repository path (default: auto-detect)"
+    )
+    args = parser.parse_args()
+
+    if args.repo:
+        repo_root = args.repo.resolve()
+        if not (repo_root / ".git").exists():
+            print(
+                f"Warning: {repo_root} doesn't appear to be a git repository",
+                file=sys.stderr,
+            )
+    else:
+        # Try to detect from plugin directory (may be in a subdirectory of a repo)
+        repo_root = find_repo_root_from_path(plugin_dir)
+        if not repo_root:
+            # Fallback to cwd-based detection
+            repo_info = detect_repo()
+            if not repo_info:
+                print("Error: Not in a git repository", file=sys.stderr)
+                sys.exit(1)
+            repo_root = repo_info.root
 
     # Setup paths
-    bundles_dir = repo_info.root / ".claude" / "context_memory" / "bundles"
-    index_path = repo_info.root / ".claude" / "context_memory" / "index.json"
+    bundles_dir = repo_root / ".claude" / "context_memory" / "bundles"
+    index_path = repo_root / ".claude" / "context_memory" / "index.json"
 
     if not bundles_dir.exists():
         print("No bundles directory found")
@@ -53,7 +76,7 @@ def main():
             "ts": mtime,
             "ops_count": count,
             "bytes_est": size,
-            "branch": repo_info.branch or "unknown",
+            "branch": get_current_branch(repo_root) or "unknown",
             "exists": True,
         }
 
