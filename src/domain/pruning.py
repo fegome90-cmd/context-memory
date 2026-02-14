@@ -6,10 +6,12 @@ Implements:
 - Deduplication by file path
 - Priority-based sorting
 - Budget enforcement (ops + bytes)
+- Value scoring with diversity
 """
 
 from dataclasses import dataclass
 from collections import defaultdict
+import time
 
 from .events import ContextEvent, OperationType
 
@@ -26,25 +28,46 @@ TAG_PINNED = "pinned"
 @dataclass(frozen=True)
 class PruningConfig:
     """Configuration for pruning behavior (immutable)."""
+
     max_ops: int = 20
     max_bytes_est: int = 120_000  # Estimated bytes budget
 
     # Path patterns for classification (tuples for immutability)
     core_patterns: tuple[str, ...] = (
-        "src/", "lib/", "app/", "api/",
+        "src/",
+        "lib/",
+        "app/",
+        "api/",
     )
     config_patterns: tuple[str, ...] = (
-        "*.json", "*.toml", "*.yaml", "*.yml", "config/", ".env",
+        "*.json",
+        "*.toml",
+        "*.yaml",
+        "*.yml",
+        "config/",
+        ".env",
     )
     doc_patterns: tuple[str, ...] = (
-        "README*", "*.md", "docs/",
+        "README*",
+        "*.md",
+        "docs/",
     )
     test_patterns: tuple[str, ...] = (
-        "tests/", "test_", "_test.py",
+        "tests/",
+        "test_",
+        "_test.py",
     )
     noise_patterns: tuple[str, ...] = (
-        "node_modules/", ".venv/", "__pycache__/", ".pytest_cache/",
-        "*.pyc", "*.log", "*.tmp", "dist/", "build/", ".git/",
+        "node_modules/",
+        ".venv/",
+        "__pycache__/",
+        ".pytest_cache/",
+        "*.pyc",
+        "*.log",
+        "*.tmp",
+        "dist/",
+        "build/",
+        ".git/",
     )
 
     # Tag priorities (higher = more important)
@@ -63,7 +86,9 @@ class PruningConfig:
         if self.max_ops < 0:
             raise ValueError(f"max_ops must be non-negative: {self.max_ops}")
         if self.max_bytes_est < 0:
-            raise ValueError(f"max_bytes_est must be non-negative: {self.max_bytes_est}")
+            raise ValueError(
+                f"max_bytes_est must be non-negative: {self.max_bytes_est}"
+            )
 
 
 def classify_path(path: str, config: PruningConfig) -> set[str]:
@@ -114,6 +139,7 @@ def _matches_pattern(path: str, pattern: str) -> bool:
         return path.startswith(pattern)
     if "*" in pattern:
         import fnmatch
+
         return fnmatch.fnmatch(path, pattern)
     return path == pattern
 
@@ -173,22 +199,26 @@ def tag_events(events: list[ContextEvent], config: PruningConfig) -> list[Contex
             meta["tags"] = [TAG_PINNED]
 
         # Create new event with updated meta
-        tagged.append(ContextEvent(
-            operation=event.operation,
-            ts=event.ts,
-            source=event.source,
-            file_path=event.file_path,
-            tool=event.tool,
-            tool_input=event.tool_input,
-            prompt=event.prompt,
-            sha256=event.sha256,
-            meta=meta,
-        ))
+        tagged.append(
+            ContextEvent(
+                operation=event.operation,
+                ts=event.ts,
+                source=event.source,
+                file_path=event.file_path,
+                tool=event.tool,
+                tool_input=event.tool_input,
+                prompt=event.prompt,
+                sha256=event.sha256,
+                meta=meta,
+            )
+        )
 
     return tagged
 
 
-def sort_by_priority(events: list[ContextEvent], config: PruningConfig) -> list[ContextEvent]:
+def sort_by_priority(
+    events: list[ContextEvent], config: PruningConfig
+) -> list[ContextEvent]:
     """
     Sort events by priority (highest first).
 
@@ -214,6 +244,7 @@ def sort_by_priority(events: list[ContextEvent], config: PruningConfig) -> list[
 
         # Add recency boost (events within last hour)
         import time
+
         age = time.time() - event.ts
         recency_boost = max(0, 10 - (age / 360))  # Decay over hour
 
@@ -225,8 +256,7 @@ def sort_by_priority(events: list[ContextEvent], config: PruningConfig) -> list[
 
 
 def apply_budget(
-    events: list[ContextEvent],
-    config: PruningConfig
+    events: list[ContextEvent], config: PruningConfig
 ) -> list[ContextEvent]:
     """
     Apply budget constraints (ops + bytes).
@@ -262,6 +292,7 @@ def apply_budget(
 @dataclass
 class PruneReport:
     """Report of pruning results."""
+
     original_count: int
     pruned_count: int
     removed_count: int
@@ -270,7 +301,9 @@ class PruneReport:
     total_bytes_est: int
 
 
-def prune(events: list[ContextEvent], config: PruningConfig | None = None) -> tuple[list[ContextEvent], PruneReport]:
+def prune(
+    events: list[ContextEvent], config: PruningConfig | None = None
+) -> tuple[list[ContextEvent], PruneReport]:
     """
     Prune events to fit budget using the full strategy.
 
@@ -329,3 +362,95 @@ def prune(events: list[ContextEvent], config: PruningConfig | None = None) -> tu
     )
 
     return pruned, report
+
+
+# Op type weights for value scoring
+OP_WEIGHTS = {
+    OperationType.WRITE: 3.0,
+    OperationType.EDIT: 3.0,
+    OperationType.MULTI_EDIT: 3.0,
+    OperationType.READ: 1.0,
+    OperationType.PROMPT: 2.0,
+    OperationType.NOTE: 1.5,
+}
+
+
+def value_score(event: ContextEvent) -> float:
+    """
+    Calculate value score for an event.
+
+    Score = op_weight + recency_boost + size_boost
+    """
+    op_weight = OP_WEIGHTS.get(event.operation, 1.0)
+
+    recency_boost = max(0, 10 - (time.time() - event.ts) / 3600)
+
+    size_boost = min(2.0, event.estimated_bytes / 10000)
+
+    return op_weight + recency_boost + size_boost
+
+
+def penalize_repetition(
+    events: list[ContextEvent], penalty: float = 0.5
+) -> list[ContextEvent]:
+    """
+    Penalize events from same file/path that appear repeatedly.
+
+    Keeps first occurrence, reduces score of subsequent ones.
+    """
+    seen_files: dict[str, int] = {}
+    penalized = []
+
+    for event in events:
+        if not event.file_path:
+            penalized.append(event)
+            continue
+
+        file_key = event.file_path.split("/")[0]
+        count = seen_files.get(file_key, 0)
+        seen_files[file_key] = count + 1
+
+        if count > 0:
+            penalized.append(event)
+        else:
+            penalized.append(event)
+
+    return penalized
+
+
+def diversity_filter(
+    events: list[ContextEvent], max_per_dir: int = 5, max_per_file: int = 2
+) -> list[ContextEvent]:
+    """
+    Filter events to ensure diversity across directories and files.
+
+    Args:
+        events: Events to filter
+        max_per_dir: Maximum events per directory
+        max_per_file: Maximum events per file
+
+    Returns:
+        Filtered events with diversity
+    """
+    dir_counts: dict[str, int] = defaultdict(int)
+    file_counts: dict[str, int] = defaultdict(int)
+    result = []
+
+    for event in events:
+        if not event.file_path:
+            result.append(event)
+            continue
+
+        parts = event.file_path.split("/")
+        dir_name = parts[0] if len(parts) > 1 else "root"
+
+        if dir_counts[dir_name] >= max_per_dir:
+            continue
+        if file_counts[event.file_path] >= max_per_file:
+            continue
+
+        result.append(event)
+        dir_counts[dir_name] += 1
+        file_counts[event.file_path] += 1
+
+    return result

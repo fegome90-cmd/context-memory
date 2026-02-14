@@ -18,6 +18,7 @@ from domain.plan import build_load_plan, detect_drift
 from infrastructure.repo import detect_repo
 from infrastructure.storage_jsonl import JSONLStorage
 from infrastructure.cas import compute_sha256
+from infrastructure.staleness import assess_staleness
 
 
 def load_checkpoint(bundle_dir: Path, bundle_name: str) -> str | None:
@@ -64,10 +65,27 @@ def main():
         print("=" * 40)
         print(checkpoint.strip())
         print("=" * 40 + "\n")
+
+        # Extract focus dirs from checkpoint for staleness check
+        focus_dirs = []
+        for line in checkpoint.strip().split("\n"):
+            if line.startswith("FOCUS:"):
+                focus_part = line.split("FOCUS:")[1].split("|")[0].strip()
+                focus_dirs = [d for d in focus_part.split(",") if d and d != "n/a"]
+                break
     else:
-        # Fallback if no checkpoint
         print("CHK: n/a | DONE: n/a | NEXT: n/a")
         print("FOCUS: n/a | EVID: n-a\n")
+        focus_dirs = []
+
+    # Check staleness
+    if focus_dirs:
+        staleness = assess_staleness(
+            repo_root=repo_info.root,
+            bundle_ts=bundle_path.stat().st_mtime,
+            focus_dirs=focus_dirs,
+        )
+        print(f"STALE_RISK: {staleness.risk.upper()} ({staleness.reason})\n")
 
     storage = JSONLStorage(bundle_path)
     events = list(storage.read_all())
