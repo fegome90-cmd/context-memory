@@ -534,6 +534,14 @@ def detect_context() -> Dict[str, Any]:
         if result.stdout.strip():
             # Sanitize file paths (filter null bytes, carriage returns)
             raw_files = result.stdout.strip().split("\n")
+            # SECURITY: Limit file list to prevent memory exhaustion
+            MAX_FILES = 10000
+            if len(raw_files) > MAX_FILES:
+                logger.warning(
+                    f"Too many staged files ({len(raw_files)}), "
+                    f"truncating to {MAX_FILES}"
+                )
+                raw_files = raw_files[:MAX_FILES]
             context["staged_files"] = [
                 f for f in raw_files
                 if f and not any(c in f for c in ['\0', '\r'])
@@ -546,6 +554,14 @@ def detect_context() -> Dict[str, Any]:
         )
         if result.stdout.strip():
             raw_files = result.stdout.strip().split("\n")
+            # SECURITY: Limit file list to prevent memory exhaustion
+            MAX_FILES = 10000
+            if len(raw_files) > MAX_FILES:
+                logger.warning(
+                    f"Too many working files ({len(raw_files)}), "
+                    f"truncating to {MAX_FILES}"
+                )
+                raw_files = raw_files[:MAX_FILES]
             context["working_files"] = [
                 f for f in raw_files
                 if f and not any(c in f for c in ['\0', '\r'])

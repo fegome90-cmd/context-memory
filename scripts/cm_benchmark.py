@@ -74,17 +74,23 @@ class BenchmarkReport:
     results: Tuple[BenchmarkResult, ...]
 
     def to_dict(self) -> dict:
-        """Convert report to dictionary for serialization."""
+        """Convert report to dictionary for serialization.
+
+        Returns None for unavailable statistics instead of sentinel -1.0 values.
+        """
+        # Check if stats are available (non-negative sentinel check)
+        stats_available = self.min_ms >= 0
+
         return {
             "total_iterations": self.total_iterations,
             "successful_iterations": self.successful_iterations,
             "failed_iterations": self.failed_iterations,
-            "min_ms": round(self.min_ms, 2),
-            "max_ms": round(self.max_ms, 2),
-            "mean_ms": round(self.mean_ms, 2),
-            "median_ms": round(self.median_ms, 2),
-            "p95_ms": round(self.p95_ms, 2),
-            "p99_ms": round(self.p99_ms, 2),
+            "min_ms": round(self.min_ms, 2) if stats_available else None,
+            "max_ms": round(self.max_ms, 2) if stats_available else None,
+            "mean_ms": round(self.mean_ms, 2) if stats_available else None,
+            "median_ms": round(self.median_ms, 2) if stats_available else None,
+            "p95_ms": round(self.p95_ms, 2) if stats_available else None,
+            "p99_ms": round(self.p99_ms, 2) if stats_available else None,
         }
 
     def to_json(self) -> str:

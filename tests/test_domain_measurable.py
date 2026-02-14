@@ -276,6 +276,81 @@ class TestEnvelopeDataclass:
         assert envelope.verdict == GateStatus.PASS
         assert len(envelope.gates) == 2
 
+    def test_create_envelope_inconclusive_gate_treated_as_pass(self):
+        """INCONCLUSIVE gates should not trigger FAIL or WARNING verdict."""
+        from src.domain.measurable import create_envelope, Gate, GateStatus, ReasonCode
+        gates = (
+            Gate(gate_id="test1", status=GateStatus.INCONCLUSIVE, description="Unknown"),
+            Gate(gate_id="test2", status=GateStatus.PASS, description="OK"),
+        )
+        envelope = create_envelope(
+            data={"test": "value"},
+            gates=gates,
+            reason_codes=(ReasonCode.M101_SMALL_CHANGE,),
+            warnings=(),
+            errors=()
+        )
+        # INCONCLUSIVE doesn't trigger FAIL or WARNING, so verdict is PASS
+        assert envelope.verdict == GateStatus.PASS
+
+    def test_create_envelope_fail_overrides_inconclusive(self):
+        """FAIL gate should override INCONCLUSIVE gates."""
+        from src.domain.measurable import create_envelope, Gate, GateStatus, ReasonCode
+        gates = (
+            Gate(gate_id="test1", status=GateStatus.INCONCLUSIVE, description="Unknown"),
+            Gate(gate_id="test2", status=GateStatus.FAIL, description="Failed"),
+        )
+        envelope = create_envelope(
+            data={"test": "value"},
+            gates=gates,
+            reason_codes=(),
+            warnings=(),
+            errors=()
+        )
+        assert envelope.verdict == GateStatus.FAIL
+
+    def test_create_envelope_errors_override_gates(self):
+        """Errors tuple should cause FAIL regardless of gate status."""
+        from src.domain.measurable import create_envelope, Gate, GateStatus, ReasonCode
+        gates = (
+            Gate(gate_id="test1", status=GateStatus.PASS, description="OK"),
+        )
+        envelope = create_envelope(
+            data={"test": "value"},
+            gates=gates,
+            reason_codes=(),
+            warnings=(),
+            errors=("Critical error",)
+        )
+        assert envelope.verdict == GateStatus.FAIL
+
+    def test_create_envelope_warnings_with_pass_gates(self):
+        """Warnings should cause WARNING verdict even with all PASS gates."""
+        from src.domain.measurable import create_envelope, Gate, GateStatus, ReasonCode
+        gates = (
+            Gate(gate_id="test1", status=GateStatus.PASS, description="OK"),
+        )
+        envelope = create_envelope(
+            data={"test": "value"},
+            gates=gates,
+            reason_codes=(),
+            warnings=("Minor issue",),
+            errors=()
+        )
+        assert envelope.verdict == GateStatus.WARNING
+
+    def test_create_envelope_empty_gates_is_pass(self):
+        """Empty gates tuple should result in PASS verdict when no errors/warnings."""
+        from src.domain.measurable import create_envelope, GateStatus
+        envelope = create_envelope(
+            data={"test": "value"},
+            gates=(),
+            reason_codes=(),
+            warnings=(),
+            errors=()
+        )
+        assert envelope.verdict == GateStatus.PASS
+
 
 class TestEvaluateContextDetectionGate:
     """Tests for evaluate_context_detection_gate function."""
