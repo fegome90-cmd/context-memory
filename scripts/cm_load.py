@@ -20,10 +20,29 @@ from infrastructure.storage_jsonl import JSONLStorage
 from infrastructure.cas import compute_sha256
 
 
+def load_checkpoint(bundle_dir: Path, bundle_name: str) -> str | None:
+    """Load checkpoint file if exists."""
+    checkpoint_path = bundle_dir / f"{bundle_name}.checkpoint.txt"
+    if checkpoint_path.exists():
+        return checkpoint_path.read_text()
+    return None
+
+
 def main():
     parser = argparse.ArgumentParser(description="Load a context bundle")
     parser.add_argument("name", help="Bundle name")
-    parser.add_argument("--execute", action="store_true", help="Execute reads (display file contents)")
+    parser.add_argument(
+        "--execute", action="store_true", help="Execute reads (display file contents)"
+    )
+    parser.add_argument(
+        "--minimal",
+        action="store_true",
+        default=True,
+        help="Show checkpoint first (default)",
+    )
+    parser.add_argument(
+        "--full", action="store_true", help="Show full rehydration plan"
+    )
     args = parser.parse_args()
 
     # Detect repo
@@ -33,10 +52,22 @@ def main():
         sys.exit(1)
 
     # Load bundle
-    bundle_path = repo_info.root / ".claude" / "context_memory" / "bundles" / f"{args.name}.jsonl"
+    bundle_dir = repo_info.root / ".claude" / "context_memory" / "bundles"
+    bundle_path = bundle_dir / f"{args.name}.jsonl"
     if not bundle_path.exists():
         print(f"Error: Bundle '{args.name}' not found", file=sys.stderr)
         sys.exit(1)
+
+    # Load checkpoint FIRST (contract: first line starts with CHK:)
+    checkpoint = load_checkpoint(bundle_dir, args.name)
+    if checkpoint:
+        print("=" * 40)
+        print(checkpoint.strip())
+        print("=" * 40 + "\n")
+    else:
+        # Fallback if no checkpoint
+        print("CHK: n/a | DONE: n/a | NEXT: n/a")
+        print("FOCUS: n/a | EVID: n-a\n")
 
     storage = JSONLStorage(bundle_path)
     events = list(storage.read_all())
@@ -71,14 +102,25 @@ def main():
     for warning in drift_warnings:
         plan.add_warning(warning)
 
-    # Print plan
-    print(plan.summarize())
+    # Print plan (minimal vs full)
+    if args.full:
+        print(plan.summarize())
+    else:
+        # Minimal: show top 5 files only
+        read_steps = [s for s in plan.steps if s.action.value == "read"]
+        print("📋 Rehydration (top files):")
+        for i, step in enumerate(read_steps[:5], 1):
+            print(f"   {i}. {step.path}")
+        if len(read_steps) > 5:
+            print(f"   ... and {len(read_steps) - 5} more")
+        if plan.warnings:
+            print(f"\n⚠️  Warnings: {len(plan.warnings)}")
 
     # Optionally execute
     if args.execute:
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Executing rehydration...")
-        print("="*60 + "\n")
+        print("=" * 60 + "\n")
 
         for step in plan.steps:
             if step.action.value == "read" and step.path:
