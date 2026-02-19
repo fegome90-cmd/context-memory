@@ -40,6 +40,24 @@
       "repo_rev": "e549017",
       "focus_hash": "869e752f",
       "exists": true
+    },
+    "hook-pathology-fix": {
+      "ts": 1771420673,
+      "ops_count": 20,
+      "bytes_est": 8300,
+      "branch": "unknown",
+      "repo_rev": "bc10877",
+      "focus_hash": "e64ae183",
+      "exists": true
+    },
+    "handoff-card-feature": {
+      "ts": 1771515461,
+      "ops_count": 20,
+      "bytes_est": 8300,
+      "branch": "feat/measurable-system-with-dspy",
+      "repo_rev": "bc10877",
+      "focus_hash": "48a9d8f8",
+      "exists": true
     }
   }
 }

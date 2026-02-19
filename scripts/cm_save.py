@@ -107,6 +107,30 @@ def generate_checkpoint(events: list, pruned_events: list) -> str:
     return f"{line1}\n{line2}"
 
 
+def generate_handoff_card(bundle_name: str, focus_dirs: str, status: str) -> str:
+    """
+    Generate a copy-pasteable handoff card for next agent.
+
+    Args:
+        bundle_name: Name of the saved bundle
+        focus_dirs: Comma-separated focus directories (already parsed)
+        status: Work status from checkpoint (already parsed)
+
+    Returns:
+        Formatted handoff card string
+    """
+    return f"""
+───────────────────────────────────
+📦 HANDOFF: {bundle_name}
+Focus: {focus_dirs} | Status: {status}
+
+▶️ COPY-PASTE TO NEXT AGENT:
+Load context bundle '{bundle_name}' and continue work.
+Use: /cm-load {bundle_name}
+───────────────────────────────────
+"""
+
+
 def write_checkpoint_atomic(
     bundle_dir: Path, bundle_name: str, checkpoint: str
 ) -> Path:
@@ -215,6 +239,18 @@ def main():
     print(f"  Events: {report.original_count} → {report.pruned_count}")
     print(f"  Estimated bytes: {report.total_bytes_est:,}")
     print(f"  Tags: {report.final_tags}")
+
+    # Compute status for handoff (reuse logic from generate_checkpoint)
+    has_write = any(
+        e.operation in (OperationType.WRITE, OperationType.EDIT, OperationType.MULTI_EDIT)
+        for e in pruned_events
+    )
+    status = "edited" if has_write else "reviewed" if events else "n/a"
+    focus_display = ",".join(focus_dirs) if focus_dirs else "n/a"
+
+    # Generate and print handoff card
+    handoff_card = generate_handoff_card(args.name, focus_display, status)
+    print(handoff_card)
 
 
 def update_indexes(
