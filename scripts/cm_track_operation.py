@@ -17,6 +17,7 @@ Environment Variables:
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -118,7 +119,7 @@ def create_event(
             logger.debug(f"Unknown tool: {tool_name}")
             return None
 
-        ts = timestamp if timestamp is not None else int(os.times()[4])
+        ts = timestamp if timestamp is not None else int(time.time())
 
         return ContextEvent(
             operation=operation,

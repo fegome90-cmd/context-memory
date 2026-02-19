@@ -613,7 +613,11 @@ class TestMainCLI:
         assert "Suggested agents" in captured.out
 
     def test_suggest_with_missing_agent_in_map(self, capsys):
-        """--suggest should handle agents not found in AGENT_MAP gracefully."""
+        """--suggest should fail fast when agents not found in AGENT_MAP.
+
+        Missing agents indicate a configuration bug, so we exit with code 2
+        rather than silently continuing.
+        """
         mock_context = {
             "has_pr": False,
             "has_tests": False,
@@ -626,10 +630,14 @@ class TestMainCLI:
         with patch('sys.argv', ['cm_multi_review.py', '--suggest']):
             with patch('scripts.cm_multi_review.detect_context', return_value=mock_context):
                 with patch('scripts.cm_multi_review.suggest_agents', return_value=["ghost:nonexistent"]):
-                    main()
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
         captured = capsys.readouterr()
-        assert "ERROR" in captured.out
-        assert "ghost:nonexistent" in captured.out
+        # Should exit with code 2 for configuration error
+        assert exc_info.value.code == 2
+        # Should show the error message
+        assert "ERROR" in captured.out or "FATAL" in captured.err
+        assert "ghost:nonexistent" in captured.out or "ghost:nonexistent" in captured.err
 
 
 # ============================================================================

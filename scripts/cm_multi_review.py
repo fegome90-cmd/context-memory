@@ -38,6 +38,16 @@ plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
 from infrastructure.logging import get_logger  # type: ignore[import-not-found]
+from domain.measurable import (  # type: ignore[import-not-found]
+    Gate,
+    GateStatus,
+    ReasonCode,
+    Envelope,
+    create_envelope,
+    evaluate_context_detection_gate,
+    evaluate_agent_selection_gate,
+    get_reason_codes_for_context,
+)
 
 logger = get_logger(__name__)
 
@@ -416,6 +426,12 @@ AGENT_PRESETS = {
 # =============================================================================
 # LAZY VALIDATION
 # =============================================================================
+# NOTE: This module-level lazy validation pattern assumes single-threaded
+# execution. The module-level _validation_performed and _validation_failed
+# flags are accessed without locking. In Python's CPython implementation,
+# the GIL (Global Interpreter Lock) prevents actual race conditions for
+# simple boolean reads/writes, making this pattern safe for CLI scripts.
+# If this code is ever used in a multi-threaded context, add threading.Lock().
 
 _validation_performed = False
 _validation_failed = False
@@ -423,6 +439,13 @@ _validation_failed = False
 
 def _ensure_agent_data_consistency() -> None:
     """Ensure agent data is consistent, validating once.
+
+    This function implements a lazy validation pattern that validates
+    agent data consistency only on first call, then caches the result.
+    Subsequent calls return immediately (or raise if validation failed).
+
+    Thread Safety: This function is NOT thread-safe. It assumes single-
+    threaded CLI execution. See module-level note for details.
 
     Raises:
         ValueError: If data consistency issues are detected.
@@ -457,7 +480,7 @@ def detect_context() -> Dict[str, Any]:
 
     Returns:
         Dictionary with keys: has_pr, has_tests, has_types, has_error_handling,
-        has_comments, change_size, staged_files, working_files.
+        has_comments, change_size, staged_files, working_files, git_available.
         May include partial_context=True if git detection failed partially.
 
     Notes:
@@ -477,6 +500,7 @@ def detect_context() -> Dict[str, Any]:
         "change_size": 0,
         "staged_files": [],
         "working_files": [],
+        "git_available": True,  # Default to True, set False if git fails
     }
 
     # Detect PR using helper
@@ -510,6 +534,14 @@ def detect_context() -> Dict[str, Any]:
         if result.stdout.strip():
             # Sanitize file paths (filter null bytes, carriage returns)
             raw_files = result.stdout.strip().split("\n")
+            # SECURITY: Limit file list to prevent memory exhaustion
+            MAX_FILES = 10000
+            if len(raw_files) > MAX_FILES:
+                logger.warning(
+                    f"Too many staged files ({len(raw_files)}), "
+                    f"truncating to {MAX_FILES}"
+                )
+                raw_files = raw_files[:MAX_FILES]
             context["staged_files"] = [
                 f for f in raw_files
                 if f and not any(c in f for c in ['\0', '\r'])
@@ -522,6 +554,14 @@ def detect_context() -> Dict[str, Any]:
         )
         if result.stdout.strip():
             raw_files = result.stdout.strip().split("\n")
+            # SECURITY: Limit file list to prevent memory exhaustion
+            MAX_FILES = 10000
+            if len(raw_files) > MAX_FILES:
+                logger.warning(
+                    f"Too many working files ({len(raw_files)}), "
+                    f"truncating to {MAX_FILES}"
+                )
+                raw_files = raw_files[:MAX_FILES]
             context["working_files"] = [
                 f for f in raw_files
                 if f and not any(c in f for c in ['\0', '\r'])
@@ -576,6 +616,7 @@ def detect_context() -> Dict[str, Any]:
         # RuntimeError from _run_git_command - already has actionable message
         logger.error(f"Git context detection failed: {e}")
         context["partial_context"] = True
+        context["git_available"] = False  # Mark git as unavailable
 
     return context
 
@@ -662,10 +703,11 @@ def validate_environment(raise_on_error: bool = False) -> Tuple[bool, List[str]]
         logger.debug("gh CLI not found - PR detection will be disabled")
     except subprocess.TimeoutExpired:
         logger.debug("gh CLI timed out (optional tool)")
-    # Catch-all for truly unexpected exceptions (gh CLI is optional, so we
-    # log and continue rather than crash)
-    except Exception as e:
-        logger.debug(f"gh CLI check failed: {e}")
+    except OSError as e:
+        # Catch OS-level errors (PermissionError, etc.) for optional tool
+        logger.debug(f"gh CLI check failed with OS error: {e}")
+    # Note: gh CLI is optional, so we gracefully handle all expected errors.
+    # Unexpected non-OS errors (e.g., KeyboardInterrupt) should propagate.
 
     is_valid = len(errors) == 0
 
@@ -749,7 +791,12 @@ def _get_preset_reason(preset: str, context: Dict[str, Any]) -> str:
         "thorough": "Medium change with specific focus areas",
         "comprehensive": "Large change (> 500 lines) - complete review",
         "framework": "Framework-specific compliance review",
+        "custom": "Context-driven agent selection",
     }
+
+    if preset not in reasons:
+        logger.warning(f"Unknown preset '{preset}' - using default reason. "
+                      f"Known presets: {list(reasons.keys())}")
 
     base_reason = reasons.get(preset, "Standard review")
 
@@ -837,6 +884,152 @@ def suggest_agents(context: Dict[str, Any]) -> List[str]:
     return agents
 
 
+# =============================================================================
+# MEASURABLE SYSTEM: Agent Suggestions with Reason Codes
+# =============================================================================
+
+@dataclass(frozen=True)
+class AgentSuggestion:
+    """Structured agent suggestion with reason codes.
+
+    Attributes:
+        agents: Tuple of recommended agent names
+        reason_codes: Tuple of reason codes explaining the selection
+        preset_used: Name of the preset used (or 'custom')
+    """
+    agents: Tuple[str, ...]
+    reason_codes: Tuple[ReasonCode, ...]
+    preset_used: str
+
+
+def suggest_agents_with_reasons(context: Dict[str, Any]) -> AgentSuggestion:
+    """Suggest agents with structured reason codes.
+
+    This is the measurable version of suggest_agents() that returns
+    structured data with reason codes explaining the selection.
+
+    Args:
+        context: Repository context from detect_context()
+
+    Returns:
+        AgentSuggestion with agents, reason codes, and preset name.
+
+    Example:
+        >>> context = {"change_size": 25, "git_available": True}
+        >>> result = suggest_agents_with_reasons(context)
+        >>> result.preset_used
+        'quick'
+        >>> result.reason_codes[0]
+        <ReasonCode.M101_SMALL_CHANGE: 'M101'>
+    """
+    # Get reason codes from context
+    reason_codes = get_reason_codes_for_context(context)
+
+    # Determine preset based on change size
+    change_size = context.get("change_size", 0)
+    git_available = context.get("git_available", True)
+
+    if not git_available:
+        # Fallback to quick preset when git unavailable (degraded mode)
+        logger.warning(
+            "Git not available - operating in degraded mode. "
+            "Using 'quick' preset as fallback."
+        )
+        preset_name = "quick"
+        agents = tuple(AGENT_PRESETS[preset_name])
+    elif change_size < CHANGE_SIZE_SMALL_THRESHOLD:
+        preset_name = "quick"
+        agents = tuple(AGENT_PRESETS[preset_name])
+    elif change_size > CHANGE_SIZE_LARGE_THRESHOLD:
+        preset_name = "comprehensive"
+        agents = tuple(AGENT_PRESETS[preset_name])
+    else:
+        # Medium-sized changes - build custom list
+        preset_name = "custom"
+        agent_list = [_find_agent("quick", "code-reviewer")]
+
+        if context.get("has_tests", False):
+            agent_list.append(_find_agent("thorough", "pr-test-analyzer"))
+
+        if context.get("has_types", False):
+            agent_list.append(_find_agent("comprehensive", "type-design-analyzer"))
+
+        if context.get("has_error_handling", False):
+            agent_list.append(_find_agent("thorough", "silent-failure-hunter"))
+
+        agents = tuple(agent_list)
+
+    return AgentSuggestion(
+        agents=agents,
+        reason_codes=reason_codes,
+        preset_used=preset_name,
+    )
+
+
+def format_output_envelope(
+    context: Dict[str, Any],
+    suggested_preset: str,
+    agents: List[str],
+    warnings: List[str],
+    errors: List[str]
+) -> str:
+    """Format output as structured JSON envelope.
+
+    Creates a measurable envelope with quality gates, reason codes,
+    and structured data for reliable parsing.
+
+    Args:
+        context: Detected repository context
+        suggested_preset: Recommended preset name
+        agents: List of suggested agents
+        warnings: Non-fatal warning messages
+        errors: Error messages (causes FAIL verdict)
+
+    Returns:
+        JSON string with envelope structure.
+
+    Example:
+        >>> context = {"change_size": 100, "git_available": True}
+        >>> result = format_output_envelope(context, "quick", ["test:agent"], [], [])
+        >>> import json
+        >>> parsed = json.loads(result)
+        >>> "$schema" in parsed
+        True
+    """
+    # Evaluate quality gates
+    context_gate = evaluate_context_detection_gate(context)
+    agent_gate = evaluate_agent_selection_gate(agents)
+
+    gates = (context_gate, agent_gate)
+
+    # Get reason codes
+    reason_codes = get_reason_codes_for_context(context)
+
+    # Build data payload
+    data = {
+        "agents": agents,
+        "preset": suggested_preset,
+        "context": {
+            "has_pr": context.get("has_pr", False),
+            "has_tests": context.get("has_tests", False),
+            "has_types": context.get("has_types", False),
+            "has_error_handling": context.get("has_error_handling", False),
+            "change_size": context.get("change_size", 0),
+        },
+    }
+
+    # Create envelope using domain helper
+    envelope = create_envelope(
+        data=data,
+        gates=gates,
+        reason_codes=reason_codes,
+        warnings=tuple(warnings),
+        errors=tuple(errors),
+    )
+
+    return envelope.to_json()
+
+
 def format_agent_list(agents: List[Agent], group_name: str) -> str:
     """Format agents for display.
 
@@ -907,6 +1100,11 @@ Examples:
             action="store_true",
             help="Show detected context information"
         )
+        parser.add_argument(
+            "--json",
+            action="store_true",
+            help="Output in structured JSON envelope format (use with --suggest)"
+        )
 
         args = parser.parse_args()
 
@@ -914,14 +1112,102 @@ Examples:
             try:
                 context = detect_context()
             except RuntimeError as e:
-                print(f"Error detecting repository context: {e}", file=sys.stderr)
-                print("\nCannot suggest agents without context information.", file=sys.stderr)
+                if args.json:
+                    # Output error as JSON envelope
+                    error_output = format_output_envelope(
+                        context={},
+                        suggested_preset="",
+                        agents=[],
+                        warnings=[],
+                        errors=[f"Error detecting repository context: {e}"]
+                    )
+                    print(error_output)
+                else:
+                    print(f"Error detecting repository context: {e}", file=sys.stderr)
+                    print("\nCannot suggest agents without context information.", file=sys.stderr)
+                sys.exit(1)
+            except subprocess.TimeoutExpired as e:
+                # Handle timeout specifically - user can take action (increase timeout)
+                if args.json:
+                    error_output = format_output_envelope(
+                        context={},
+                        suggested_preset="",
+                        agents=[],
+                        warnings=[],
+                        errors=[f"Git command timed out: {e}. Try running in a smaller repository."]
+                    )
+                    print(error_output)
+                else:
+                    print(f"Git command timed out: {e}", file=sys.stderr)
+                    print("Try running in a smaller repository or check git performance.", file=sys.stderr)
+                logger.error(f"Git timeout during context detection: {e}")
+                sys.exit(1)
+            except (FileNotFoundError, PermissionError) as e:
+                # Handle filesystem/access errors specifically
+                if args.json:
+                    error_output = format_output_envelope(
+                        context={},
+                        suggested_preset="",
+                        agents=[],
+                        warnings=[],
+                        errors=[f"System error: {e}"]
+                    )
+                    print(error_output)
+                else:
+                    print(f"System error: {e}", file=sys.stderr)
+                logger.error(f"Filesystem error during context detection: {e}")
+                sys.exit(1)
+            except OSError as e:
+                # Handle other OS-level errors
+                if args.json:
+                    error_output = format_output_envelope(
+                        context={},
+                        suggested_preset="",
+                        agents=[],
+                        warnings=[],
+                        errors=[f"OS error: {e}"]
+                    )
+                    print(error_output)
+                else:
+                    print(f"OS error: {e}", file=sys.stderr)
+                logger.error(f"OS error during context detection: {e}")
                 sys.exit(1)
             except Exception as e:
-                print(f"Unexpected error detecting context: {e}", file=sys.stderr)
-                logger.error(f"Context detection failed: {e}", exc_info=True)
+                # Catch-all for truly unexpected errors with full traceback
+                if args.json:
+                    error_output = format_output_envelope(
+                        context={},
+                        suggested_preset="",
+                        agents=[],
+                        warnings=[],
+                        errors=[f"Unexpected error ({type(e).__name__}): {e}"]
+                    )
+                    print(error_output)
+                else:
+                    print(f"Unexpected error ({type(e).__name__}): {e}", file=sys.stderr)
+                logger.error(f"Context detection failed with unexpected error: {e}", exc_info=True)
                 sys.exit(1)
 
+            # JSON output mode
+            if args.json:
+                suggestion = suggest_agents_with_reasons(context)
+                warnings = []
+                if not context.get("has_pr"):
+                    warnings.append("No PR detected")
+                if context.get("change_size", 0) == 0:
+                    warnings.append("Change size could not be determined")
+
+                output = format_output_envelope(
+                    context=context,
+                    suggested_preset=suggestion.preset_used,
+                    agents=list(suggestion.agents),
+                    warnings=warnings,
+                    errors=[]
+                )
+                print(output)
+                return
+
+            # Human-readable output mode
             print("🔍 Detecting repository context...\n")
 
             if args.context:
@@ -936,6 +1222,7 @@ Examples:
                 print()
 
             agents = suggest_agents(context)
+            missing_agents = []
             print("✅ Suggested agents based on context:\n")
             for agent_name in agents:
                 agent = AGENT_MAP.get(agent_name)
@@ -943,10 +1230,17 @@ Examples:
                     print(f"  • {agent.name}")
                     print(f"    {agent.description}")
                 else:
-                    # CRITICAL: Log and report missing agents
-                    print(f"  ⚠️  ERROR: Agent '{agent_name}' not found in AGENT_MAP")
+                    # CRITICAL: Track missing agents and fail after display
+                    missing_agents.append(agent_name)
+                    print(f"  ❌ ERROR: Agent '{agent_name}' not found in AGENT_MAP")
                     logger.error(f"Agent '{agent_name}' not found. Valid: {list(AGENT_MAP.keys())}")
             print()
+
+            # Fail fast if any agents are missing - indicates configuration bug
+            if missing_agents:
+                print(f"FATAL: {len(missing_agents)} agent(s) not found in AGENT_MAP.", file=sys.stderr)
+                print("This indicates a plugin configuration bug.", file=sys.stderr)
+                sys.exit(2)
 
         elif args.list:
             print("Available Agents:\n")
