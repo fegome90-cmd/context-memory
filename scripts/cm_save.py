@@ -16,7 +16,7 @@ from pathlib import Path
 plugin_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(plugin_dir / "src"))
 
-from domain.events import OperationType
+from domain.events import ContextEvent, OperationType
 from domain.pruning import PruningConfig, prune
 from infrastructure.jsonl_io import write_jsonl
 from infrastructure.repo import detect_repo, find_repo_root_from_path
@@ -27,7 +27,75 @@ from infrastructure.storage_jsonl import JSONLStorage
 MAX_CHECKPOINT_LINE_LEN = 280
 
 
-def generate_checkpoint(events: list, pruned_events: list) -> str:
+def extract_last_todos(events: list[ContextEvent], n: int = 3) -> list[dict]:
+    """
+    Extract last N TodoWrite operations from events.
+
+    Returns list of dicts with: subject, status, description
+    """
+    todos = []
+    for event in reversed(events):
+        if event.operation == OperationType.TODO and event.tool_input:
+            # Parse tool_input JSON to extract todo items
+            # TodoWrite format: {"todos": [{"subject": ..., "status": ..., "description": ...}]}
+            try:
+                data = json.loads(event.tool_input)
+                for todo in data.get("todos", []):
+                    todos.append({
+                        "subject": todo.get("subject", ""),
+                        "status": todo.get("status", "pending"),
+                        "description": todo.get("description", ""),
+                    })
+                    if len(todos) >= n:
+                        return todos
+            except json.JSONDecodeError:
+                continue
+    return todos
+
+
+def find_latest_plan() -> str | None:
+    """
+    Find the most recent plan file from plan mode.
+
+    Checks:
+    1. ~/.claude/plans/ directory (global plans)
+
+    Returns the content of the most recent plan or None.
+    """
+    plans_dir = Path.home() / ".claude" / "plans"
+    if not plans_dir.exists():
+        return None
+
+    # Get most recent .md file (glob("*.md") already excludes .bak files)
+    plan_files = sorted(
+        plans_dir.glob("*.md"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    if not plan_files:
+        return None
+
+    # Read the most recent plan (first 100 lines for summary)
+    latest = plan_files[0]
+    try:
+        content = latest.read_text()
+        lines = content.split("\n")[:100]  # Truncate to avoid bloat
+        return "\n".join(lines)
+    except OSError:
+        return None
+
+
+def compute_work_status(pruned_events: list[ContextEvent]) -> str:
+    """Compute work status from pruned events."""
+    has_write = any(
+        e.operation in (OperationType.WRITE, OperationType.EDIT, OperationType.MULTI_EDIT)
+        for e in pruned_events
+    )
+    return "edited" if has_write else "reviewed"
+
+
+def generate_checkpoint(events: list[ContextEvent], pruned_events: list[ContextEvent]) -> tuple[str, list[str]]:
     """
     Generate checkpoint from events.
 
@@ -36,25 +104,13 @@ def generate_checkpoint(events: list, pruned_events: list) -> str:
         FOCUS: <dir1>,<dir2> | EVID: <PASS/FAIL/n-a>
 
     Returns:
-        Checkpoint string (max 2 lines, 280 chars each)
+        Tuple of (checkpoint string, focus directories list)
     """
     if not events:
-        return "CHK: n/a | DONE: n/a | NEXT: n/a\nFOCUS: n/a | EVID: n-a"
+        return "CHK: n/a | DONE: n/a | NEXT: n/a\nFOCUS: n/a | EVID: n-a", []
 
     # Calculate DONE (work signal)
-    has_write = any(
-        e.operation
-        in (OperationType.WRITE, OperationType.EDIT, OperationType.MULTI_EDIT)
-        for e in pruned_events
-    )
-    has_read = any(e.operation == OperationType.READ for e in pruned_events)
-
-    if has_write:
-        done = "edited"
-    elif has_read:
-        done = "reviewed"
-    else:
-        done = "n/a"
+    done = compute_work_status(pruned_events)
 
     # Calculate NEXT (resume point)
     last_event = pruned_events[-1] if pruned_events else None
@@ -91,7 +147,8 @@ def generate_checkpoint(events: list, pruned_events: list) -> str:
 
     # Top 3 dirs
     top_dirs = sorted(dir_scores.items(), key=lambda x: x[1], reverse=True)[:3]
-    focus = ",".join([d[0] for d in top_dirs]) if top_dirs else "n/a"
+    focus_dirs = [d[0] for d in top_dirs] if top_dirs else []
+    focus = ",".join(focus_dirs) if focus_dirs else "n/a"
 
     # EVID (evidence) - no gates info in events, use n-a
     evid = "n-a"
@@ -104,31 +161,80 @@ def generate_checkpoint(events: list, pruned_events: list) -> str:
     line1 = line1[:MAX_CHECKPOINT_LINE_LEN]
     line2 = line2[:MAX_CHECKPOINT_LINE_LEN]
 
-    return f"{line1}\n{line2}"
+    return f"{line1}\n{line2}", focus_dirs
 
 
-def generate_handoff_card(bundle_name: str, focus_dirs: str, status: str) -> str:
+def generate_enhanced_handoff_card(
+    bundle_name: str,
+    focus_dirs: str,
+    status: str,
+    todos: list[dict],
+    plan_content: str | None,
+    checkpoint: str,
+) -> str:
     """
-    Generate a copy-pasteable handoff card for next agent.
+    Generate comprehensive handoff card with all session context.
 
     Args:
         bundle_name: Name of the saved bundle
-        focus_dirs: Comma-separated focus directories (already parsed)
-        status: Work status from checkpoint (already parsed)
+        focus_dirs: Comma-separated focus directories
+        status: Work status from checkpoint
+        todos: List of last N todos (from extract_last_todos)
+        plan_content: Content of latest plan file (or None)
+        checkpoint: Checkpoint string
 
     Returns:
-        Formatted handoff card string
+        Formatted handoff card string with box drawing characters
     """
-    return f"""
-───────────────────────────────────
-📦 HANDOFF: {bundle_name}
-Focus: {focus_dirs} | Status: {status}
+    CARD_WIDTH = 51  # Total width including borders
+    INNER_WIDTH = CARD_WIDTH - 2  # Space for content between │ chars
 
-▶️ COPY-PASTE TO NEXT AGENT:
-Load context bundle '{bundle_name}' and continue work.
-Use: /cm-load {bundle_name}
-───────────────────────────────────
-"""
+    def format_line(content: str) -> str:
+        """Format a line with proper padding."""
+        # Truncate if too long
+        if len(content) > INNER_WIDTH - 2:
+            content = content[:INNER_WIDTH - 5] + "..."
+        return f"│ {content:<{INNER_WIDTH - 2}}│"
+
+    lines = []
+    lines.append("┌" + "─" * (CARD_WIDTH - 2) + "┐")
+
+    # Header section
+    lines.append(format_line(f"HANDOFF: {bundle_name}"))
+    lines.append(format_line(f"Focus: {focus_dirs} | Status: {status}"))
+    lines.append("├" + "─" * (CARD_WIDTH - 2) + "┤")
+
+    # Plan section
+    if plan_content:
+        lines.append(format_line("LAST PLAN (summary)"))
+        plan_lines = plan_content.split("\n")[:8]  # First 8 lines
+        for pl in plan_lines:
+            if pl.strip():  # Skip empty lines
+                lines.append(format_line(pl))
+        lines.append("├" + "─" * (CARD_WIDTH - 2) + "┤")
+
+    # Todos section
+    if todos:
+        lines.append(format_line("LAST TODOS"))
+        for i, todo in enumerate(todos[:3], 1):
+            checkbox = "x" if todo["status"] == "completed" else " "
+            subject = todo["subject"][:38]  # Leave room for numbering
+            lines.append(format_line(f"{i}. [{checkbox}] {subject}"))
+        lines.append("├" + "─" * (CARD_WIDTH - 2) + "┤")
+
+    # Checkpoint section
+    lines.append(format_line("CHECKPOINT"))
+    for cp_line in checkpoint.split("\n"):
+        lines.append(format_line(cp_line))
+    lines.append("├" + "─" * (CARD_WIDTH - 2) + "┤")
+
+    # Resume command
+    lines.append(format_line("COPY-PASTE TO NEXT AGENT:"))
+    lines.append(format_line(f"Load context bundle '{bundle_name}'"))
+    lines.append(format_line(f"Use: /cm-load {bundle_name}"))
+    lines.append("└" + "─" * (CARD_WIDTH - 2) + "┘")
+
+    return "\n".join(lines)
 
 
 def write_checkpoint_atomic(
@@ -138,12 +244,18 @@ def write_checkpoint_atomic(
     checkpoint_path = bundle_dir / f"{bundle_name}.checkpoint.txt"
     tmp_path = checkpoint_path.with_suffix(".tmp")
 
-    # Write to tmp first
-    with open(tmp_path, "w") as f:
-        f.write(checkpoint)
+    try:
+        # Write to tmp first
+        with open(tmp_path, "w") as f:
+            f.write(checkpoint)
 
-    # Atomic rename
-    tmp_path.rename(checkpoint_path)
+        # Atomic rename
+        tmp_path.rename(checkpoint_path)
+    except OSError:
+        # Clean up tmp file on failure
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
 
     return checkpoint_path
 
@@ -207,19 +319,13 @@ def main():
     write_jsonl(bundle_path, pruned_events)
 
     # Generate and write checkpoint (atomic)
-    checkpoint = generate_checkpoint(events, pruned_events)
+    checkpoint, focus_dirs = generate_checkpoint(events, pruned_events)
     checkpoint_path = write_checkpoint_atomic(bundles_dir, args.name, checkpoint)
     print(f"  Checkpoint: {checkpoint_path.name}")
 
     # Get repo state for staleness tracking
     from infrastructure.staleness import get_repo_rev, get_focus_dirs_hash
 
-    focus_dirs = (
-        checkpoint.split("FOCUS:")[1].split("|")[0].strip().split(",")
-        if "FOCUS:" in checkpoint
-        else []
-    )
-    focus_dirs = [d for d in focus_dirs if d and d != "n/a"]
     repo_rev = get_repo_rev(repo_root)
     focus_hash = get_focus_dirs_hash(repo_root, focus_dirs) if focus_dirs else None
 
@@ -240,16 +346,23 @@ def main():
     print(f"  Estimated bytes: {report.total_bytes_est:,}")
     print(f"  Tags: {report.final_tags}")
 
-    # Compute status for handoff (reuse logic from generate_checkpoint)
-    has_write = any(
-        e.operation in (OperationType.WRITE, OperationType.EDIT, OperationType.MULTI_EDIT)
-        for e in pruned_events
-    )
-    status = "edited" if has_write else "reviewed" if events else "n/a"
+    # Compute status for handoff using shared function
+    status = compute_work_status(pruned_events)
     focus_display = ",".join(focus_dirs) if focus_dirs else "n/a"
 
-    # Generate and print handoff card
-    handoff_card = generate_handoff_card(args.name, focus_display, status)
+    # Extract session state for enhanced handoff card
+    todos = extract_last_todos(events, n=3)
+    plan_content = find_latest_plan()
+
+    # Generate and print enhanced handoff card
+    handoff_card = generate_enhanced_handoff_card(
+        bundle_name=args.name,
+        focus_dirs=focus_display,
+        status=status,
+        todos=todos,
+        plan_content=plan_content,
+        checkpoint=checkpoint,
+    )
     print(handoff_card)
 
 

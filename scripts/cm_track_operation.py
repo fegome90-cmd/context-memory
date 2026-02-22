@@ -35,12 +35,13 @@ logger = get_logger(__name__)
 
 # Constants
 MAX_TOOL_INPUT_SIZE = 4096
-TRACKED_TOOLS = frozenset({"Read", "Write", "Edit", "MultiEdit"})
+TRACKED_TOOLS = frozenset({"Read", "Write", "Edit", "MultiEdit", "TodoWrite"})
 OPERATION_MAP = {
     "Read": OperationType.READ,
     "Write": OperationType.WRITE,
     "Edit": OperationType.EDIT,
     "MultiEdit": OperationType.MULTI_EDIT,
+    "TodoWrite": OperationType.TODO,
 }
 SESSIONS_RELATIVE_PATH = ".claude/context_memory/sessions"
 
@@ -108,11 +109,23 @@ def validate_and_normalize_path(
 
 def create_event(
     tool_name: str,
-    rel_path: str,
     input_data: dict,
-    timestamp: Optional[int]
+    timestamp: Optional[int],
+    rel_path: Optional[str] = None,
 ) -> Optional[ContextEvent]:
-    """Create a ContextEvent with proper validation."""
+    """
+    Create a ContextEvent with proper validation.
+
+    Args:
+        tool_name: Name of the tool (Read, Write, Edit, MultiEdit, TodoWrite)
+        input_data: Tool input dictionary
+        timestamp: Optional timestamp (defaults to now)
+        rel_path: Optional relative file path (required for file operations,
+                  None for TodoWrite operations)
+
+    Returns:
+        ContextEvent or None if validation fails
+    """
     try:
         operation = map_operation_type(tool_name)
         if operation is None:
@@ -125,7 +138,7 @@ def create_event(
             operation=operation,
             ts=ts,
             source=EventSource.HOOK,
-            file_path=rel_path,
+            file_path=rel_path,  # None for TodoWrite, required for file ops
             tool=tool_name,
             tool_input=truncate_tool_input(input_data, MAX_TOOL_INPUT_SIZE),
         )
@@ -178,18 +191,36 @@ def main() -> int:
         logger.debug(f"Skipping tool: {tool_name}")
         return 0
 
-    # 3. Extract file_path FIRST (before repo detection)
-    # Support both input structures
+    # Extract input data
     input_data = hook_input.get("tool_input", {})
     if not input_data:
         tool_use = hook_input.get("toolUse", {})
         input_data = tool_use.get("input", {})
+
+    # 3. Special handling for TodoWrite (no file_path required)
+    if tool_name == "TodoWrite":
+        # Use cwd-based repo detection for TodoWrite
+        repo_info = detect_repo()
+        if not repo_info:
+            logger.debug("Not in a git repo - TodoWrite hook disabled")
+            return 0
+
+        logger.debug(f"Tracking TodoWrite in repo: {repo_info.root}")
+
+        # Create and store TODO event (no file_path)
+        event = create_event(tool_name, input_data, hook_input.get("timestamp"))
+        if event:
+            store_event(event, repo_info.root)
+
+        return 0
+
+    # 4. For file-based tools: extract file_path FIRST (before repo detection)
     file_path_str = extract_file_path(input_data)
     if not file_path_str:
         logger.debug("No file_path in input - skipping")
         return 0
 
-    # 4. Find repo root from file_path (primary) or cwd (fallback)
+    # 5. Find repo root from file_path (primary) or cwd (fallback)
     file_path = Path(file_path_str)
     repo_info = None
 
@@ -208,7 +239,7 @@ def main() -> int:
         logger.debug("Not in a git repo - hook disabled")
         return 0
 
-    # 5. Validate and normalize path
+    # 6. Validate and normalize path
     rel_path = validate_and_normalize_path(file_path_str, repo_info.root)
     if not rel_path:
         # FAIL-CLOSED: Log security event and return error code
@@ -219,8 +250,8 @@ def main() -> int:
 
     logger.debug(f"Tracking {tool_name} on {rel_path}")
 
-    # 6. Create and store event
-    event = create_event(tool_name, rel_path, input_data, hook_input.get("timestamp"))
+    # 7. Create and store event
+    event = create_event(tool_name, input_data, hook_input.get("timestamp"), rel_path)
     if event:
         store_event(event, repo_info.root)
 

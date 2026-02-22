@@ -19,6 +19,7 @@ class OperationType(Enum):
     MULTI_EDIT = "multi_edit"
     PROMPT = "prompt"
     NOTE = "note"
+    TODO = "todo"
 
 
 class EventSource(Enum):
